@@ -1,0 +1,22 @@
+-- Create expense_report table with all constraints defined inline
+CREATE TABLE expense_report (
+    id SERIAL PRIMARY KEY,
+    gpn VARCHAR(8) NOT NULL CHECK (gpn ~ '^\d{7,8}$'),
+    report_title VARCHAR(200),
+    invoice_number VARCHAR(100) NOT NULL,
+    item VARCHAR(200) NOT NULL,
+    details TEXT,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+    attachment VARCHAR(500),
+    report_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Unique constraint for UPSERT logic
+    CONSTRAINT uk_expense_report UNIQUE (gpn, invoice_number, item, report_date)
+);
+
+-- Create index for common query patterns
+CREATE INDEX idx_expense_report_gpn ON expense_report(gpn);
+CREATE INDEX idx_expense_report_report_date ON expense_report(report_date);
+CREATE INDEX idx_expense_report_item ON expense_report(item);
+CREATE INDEX idx_expense_report_created_at ON expense_report(created_at);
