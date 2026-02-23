@@ -1,31 +1,53 @@
 <template>
   <div class="page-wrapper">
-    <!-- Background layer for custom image -->
     <div class="background-layer"></div>
     
     <div class="glass-container">
+      <!-- Top right button for reviewing requests -->
+      <div class="top-actions">
+        <button @click="goToReview" class="btn-review">
+          Review My Requests
+        </button>
+      </div>
+
       <header class="header">
         <h1>Expense Reporting System</h1>
-        <p class="subtitle">Streamlined expense management for finance team</p>
+        <p class="subtitle">Streamlined expense management for modern teams</p>
       </header>
 
       <main>
-        <!-- GPN input section with red accent -->
-        <section class="gpn-section">
-          <label class="gpn-label">
-            <span class="label-text">GPN (7-8 digits)</span>
-            <input 
-              v-model="gpn" 
-              placeholder="12345678" 
-              maxlength="8"
-              class="gpn-input"
-              :class="{ 'error': gpnError }"
-            />
-            <span v-if="gpnError" class="error-msg">Please enter 7-8 digits</span>
-          </label>
+        <!-- User info section with email -->
+        <section class="user-section">
+          <div class="form-row">
+            <label class="input-label">
+              <span class="label-text">GPN (7-8 digits) *</span>
+              <input 
+                v-model="gpn" 
+                placeholder="12345678" 
+                maxlength="8"
+                class="text-input"
+                :class="{ 'error': gpnError }"
+                @input="gpn = gpn.replace(/\D/g, '')"
+                @blur="validateGpn"
+              />
+              <span v-if="gpnError" class="error-msg">Please enter 7-8 digits</span>
+            </label>
+            
+            <label class="input-label">
+              <span class="label-text">Your Email *</span>
+              <input 
+                v-model="userEmail" 
+                type="email"
+                placeholder="your.email@company.com" 
+                class="text-input"
+                :class="{ 'error': emailError }"
+                @blur="validateEmail"
+              />
+              <span v-if="emailError" class="error-msg">Please enter valid email</span>
+            </label>
+          </div>
         </section>
 
-        <!-- Report title and action buttons -->
         <section class="controls">
           <label class="title-label">
             <span class="label-text">Report Title</span>
@@ -46,12 +68,12 @@
           </div>
         </section>
 
-        <!-- Expense items table with invoice number column -->
+        <!-- Table with invoice number column -->
         <section class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Date</th>
+                <th>Date (YYYY-MM-DD)</th>
                 <th>Invoice Number</th>
                 <th>Category</th>
                 <th>Description</th>
@@ -65,15 +87,13 @@
                   <input 
                     type="date" 
                     v-model="row.date" 
-                    class="table-input"
+                    class="table-input date-input"
+                    :max="today"
+                    lang="en"
                   />
                 </td>
                 <td>
-                  <input 
-                    v-model="row.invoiceNumber" 
-                    placeholder="INV-001" 
-                    class="table-input"
-                  />
+                  <input v-model="row.invoiceNumber" placeholder="INV-001" class="table-input"/>
                 </td>
                 <td>
                   <select v-model="row.category" class="table-select">
@@ -86,11 +106,7 @@
                   </select>
                 </td>
                 <td>
-                  <input 
-                    v-model="row.description" 
-                    placeholder="Short description" 
-                    class="table-input"
-                  />
+                  <input v-model="row.description" placeholder="Short description" class="table-input"/>
                 </td>
                 <td>
                   <input 
@@ -100,13 +116,15 @@
                     step="0.01"
                     placeholder="0.00"
                     class="table-input amount-input"
+                    @blur="formatAmount(row)"
                   />
                 </td>
                 <td>
                   <button 
                     class="btn-remove" 
-                    @click="removeRow(idx)"
+                    @click="confirmRemoveRow(idx)"
                     :disabled="rows.length === 1"
+                    aria-label="Delete this row"
                   >
                     ×
                   </button>
@@ -116,7 +134,6 @@
           </table>
         </section>
 
-        <!-- Summary card with total amount -->
         <section class="summary-card">
           <div class="total-section">
             <span class="total-label">Total Amount:</span>
@@ -127,9 +144,21 @@
           </div>
         </section>
 
-        <!-- Alert message display -->
         <div v-if="message" :class="['alert', message.type]">
           {{ message.text }}
+        </div>
+        
+        <!-- Success modal with password info -->
+        <div v-if="showSuccessModal" class="modal-overlay">
+          <div class="modal-content">
+            <h3>Submission Successful!</h3>
+            <p>A temporary password has been sent to your email: <strong>{{ userEmail }}</strong></p>
+            <p>Use your GPN and password to review your requests.</p>
+            <div class="modal-actions">
+              <button @click="showSuccessModal = false" class="btn-secondary">Close</button>
+              <button @click="goToReview" class="btn-primary">Review My Requests</button>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -137,58 +166,49 @@
 </template>
 
 <script setup>
-import { reactive, computed, ref } from 'vue'
+import { reactive, computed, ref, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 
-// API base URL configuration
-const API_BASE_URL = 'http://localhost:8000'
+const router = useRouter()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-// Reactive state variables
 const reportTitle = ref('')
 const gpn = ref('')
+const userEmail = ref('')
 const gpnError = ref(false)
+const emailError = ref(false)
 const isSubmitting = ref(false)
 const message = ref(null)
+const showSuccessModal = ref(false)
+let messageTimer = null
 
-// Counter for unique row IDs
+// Calculate today's date for max attribute
+const today = computed(() => new Date().toISOString().split('T')[0])
+
 let idCounter = 1
-
-// Initialize with one empty row including invoiceNumber
 const rows = reactive([
-  { 
-    id: idCounter++, 
-    date: '', 
-    invoiceNumber: '',
-    category: '', 
-    description: '', 
-    amount: 0 
-  }
+  { id: idCounter++, date: '', invoiceNumber: '', category: '', description: '', amount: 0 }
 ])
 
-// Add a new empty row to the table
 function addRow() {
-  rows.push({ 
-    id: idCounter++, 
-    date: '', 
-    invoiceNumber: '',
-    category: '', 
-    description: '', 
-    amount: 0 
-  })
+  rows.push({ id: idCounter++, date: '', invoiceNumber: '', category: '', description: '', amount: 0 })
 }
 
-// Remove a row from the table (prevent removing last row)
-function removeRow(index) {
-  if (rows.length > 1) {
+function confirmRemoveRow(index) {
+  if (rows.length > 1 && confirm('Are you sure you want to delete this row?')) {
     rows.splice(index, 1)
   }
 }
 
-// Calculate total amount from all rows
 const total = computed(() => {
-  return rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+  const sum = rows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0)
+  return Math.round(sum * 100) / 100
 })
 
-// Validate GPN format (7-8 digits)
+function formatAmount(row) {
+  row.amount = Math.round((Number(row.amount) || 0) * 100) / 100
+}
+
 function validateGpn() {
   const gpnStr = gpn.value.trim()
   const isValid = /^\d{7,8}$/.test(gpnStr)
@@ -196,7 +216,13 @@ function validateGpn() {
   return isValid
 }
 
-// Validate all rows have required fields including invoiceNumber
+function validateEmail() {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const isValid = emailRegex.test(userEmail.value.trim())
+  emailError.value = !isValid
+  return isValid
+}
+
 function validateRows() {
   return rows.every(row => 
     row.date && 
@@ -207,16 +233,23 @@ function validateRows() {
   )
 }
 
-// Submit form data to backend API
+function goToReview() {
+  const token = localStorage.getItem('user_token')
+  if (token) {
+    router.push('/requests')
+  } else {
+    router.push('/login')
+  }
+}
+
 async function submit() {
-  // Validation checks
-  if (!validateGpn()) {
-    showMessage('Please enter a valid 7-8 digit GPN', 'error')
+  if (!validateGpn() || !validateEmail()) {
+    showMessage('Please fill in all required fields correctly', 'error')
     return
   }
   
   if (!validateRows()) {
-    showMessage('Please fill in all required fields (Date, Invoice Number, Category, Description, Amount)', 'error')
+    showMessage('Please fill in all expense item fields', 'error')
     return
   }
 
@@ -224,7 +257,6 @@ async function submit() {
   message.value = null
 
   try {
-    // Build payload from form data
     const payload = rows.map(row => ({
       gpn: gpn.value.trim(),
       report_title: reportTitle.value || 'Untitled Report',
@@ -233,15 +265,13 @@ async function submit() {
       details: row.description,
       amount: Number(row.amount),
       attachment: null,
-      report_date: row.date
+      report_date: row.date,
+      user_email: userEmail.value.trim()
     }))
 
-    // Send POST request to backend
     const response = await fetch(`${API_BASE_URL}/reports/bulk`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
 
@@ -250,11 +280,9 @@ async function submit() {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
     }
 
-    const result = await response.json()
+    await response.json()
     
-    showMessage(`Successfully submitted ${result.length} expense item(s)!`, 'success')
-    
-    // Reset form after successful submission
+    showSuccessModal.value = true
     resetForm()
     
   } catch (error) {
@@ -265,34 +293,33 @@ async function submit() {
   }
 }
 
-// Reset form to initial state
 function resetForm() {
   reportTitle.value = ''
   gpn.value = ''
+  userEmail.value = ''
   rows.length = 0
-  rows.push({ 
-    id: idCounter++, 
-    date: '', 
-    invoiceNumber: '',
-    category: '', 
-    description: '', 
-    amount: 0 
-  })
+  rows.push({ id: idCounter++, date: '', invoiceNumber: '', category: '', description: '', amount: 0 })
 }
 
-// Display alert message with auto-hide
 function showMessage(text, type) {
   message.value = { text, type }
-  setTimeout(() => {
-    if (message.value?.text === text) {
-      message.value = null
-    }
+  clearTimeout(messageTimer)
+  messageTimer = setTimeout(() => {
+    message.value = null
   }, 3000)
 }
+
+onUnmounted(() => {
+  clearTimeout(messageTimer)
+})
 </script>
 
 <style scoped>
-/* Page wrapper with full height */
+/* Set English locale for all date inputs */
+input[type="date"] {
+  lang: en;
+}
+
 .page-wrapper {
   min-height: 100vh;
   position: relative;
@@ -303,23 +330,20 @@ function showMessage(text, type) {
   overflow: hidden;
 }
 
-/* Background layer - customizable with your own image */
 .background-layer {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  /* Local image path - put your image in public/images/ */
   background-image: url('/images/bg.jpg');
-  background-size: cover;        /* Cover entire screen */
-  background-position: center;   /* Center the image */
-  background-repeat: no-repeat;  /* Do not repeat */
-  background-attachment: fixed;  /* Fixed background on scroll */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   z-index: -1;
 }
 
-/* Glass morphism container with red, white, black theme */
 .glass-container {
   width: 100%;
   max-width: 1200px;
@@ -329,9 +353,30 @@ function showMessage(text, type) {
   padding: 40px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
 }
 
-/* Header styling with red accent */
+.top-actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.btn-review {
+  background: #000;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-review:hover {
+  background: #e60012;
+}
+
 .header {
   text-align: center;
   margin-bottom: 32px;
@@ -367,8 +412,7 @@ function showMessage(text, type) {
   font-weight: 500;
 }
 
-/* GPN input section with red accent border */
-.gpn-section {
+.user-section {
   margin-bottom: 24px;
   padding: 20px;
   background: rgba(230, 0, 18, 0.05);
@@ -376,7 +420,15 @@ function showMessage(text, type) {
   border-left: 4px solid #e60012;
 }
 
-.gpn-label {
+.form-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.input-label {
+  flex: 1;
+  min-width: 250px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -390,24 +442,23 @@ function showMessage(text, type) {
   letter-spacing: 0.5px;
 }
 
-.gpn-input {
+.text-input {
   padding: 12px 16px;
   border: 2px solid #000000;
   border-radius: 10px;
   font-size: 1rem;
   transition: all 0.3s ease;
-  max-width: 200px;
   background: #ffffff;
   color: #000000;
 }
 
-.gpn-input:focus {
+.text-input:focus {
   outline: none;
   border-color: #e60012;
   box-shadow: 0 0 0 3px rgba(230, 0, 18, 0.2);
 }
 
-.gpn-input.error {
+.text-input.error {
   border-color: #e60012;
   background: rgba(230, 0, 18, 0.05);
 }
@@ -418,7 +469,6 @@ function showMessage(text, type) {
   font-weight: 600;
 }
 
-/* Control section with title input and buttons */
 .controls {
   display: flex;
   justify-content: space-between;
@@ -452,7 +502,6 @@ function showMessage(text, type) {
   box-shadow: 0 0 0 3px rgba(230, 0, 18, 0.2);
 }
 
-/* Button styling with red, white, black theme */
 .buttons {
   display: flex;
   gap: 12px;
@@ -514,7 +563,6 @@ function showMessage(text, type) {
   background: #cccccc;
 }
 
-/* Loading spinner animation */
 .spinner {
   width: 16px;
   height: 16px;
@@ -528,7 +576,6 @@ function showMessage(text, type) {
   to { transform: rotate(360deg); }
 }
 
-/* Table styling with black header and red accents */
 .table-wrap {
   background: #ffffff;
   border-radius: 16px;
@@ -536,6 +583,7 @@ function showMessage(text, type) {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   margin-bottom: 24px;
   border: 1px solid #000000;
+  overflow-x: auto;
 }
 
 table {
@@ -568,7 +616,6 @@ tr:hover {
   background: rgba(230, 0, 18, 0.03);
 }
 
-/* Table input fields styling */
 .table-input, .table-select {
   width: 100%;
   padding: 10px 12px;
@@ -586,13 +633,17 @@ tr:hover {
   box-shadow: 0 0 0 3px rgba(230, 0, 18, 0.1);
 }
 
+.date-input {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+}
+
 .amount-input {
   text-align: right;
   font-weight: 600;
   color: #e60012;
 }
 
-/* Remove button with red theme */
 .btn-remove {
   width: 32px;
   height: 32px;
@@ -621,7 +672,6 @@ tr:hover {
   color: #cccccc;
 }
 
-/* Summary card with black background and red accent */
 .summary-card {
   display: flex;
   justify-content: space-between;
@@ -658,7 +708,6 @@ tr:hover {
   opacity: 0.8;
 }
 
-/* Alert message styling */
 .alert {
   margin-top: 20px;
   padding: 16px 20px;
@@ -691,7 +740,80 @@ tr:hover {
   }
 }
 
-/* Responsive design for mobile devices */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #ffffff;
+  padding: 30px;
+  border-radius: 16px;
+  max-width: 500px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  color: #000000;
+  margin-bottom: 16px;
+  font-size: 1.5rem;
+}
+
+.modal-content p {
+  color: #333333;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.btn-secondary {
+  padding: 12px 24px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: #000000;
+  color: #ffffff;
+}
+
+.btn-primary {
+  padding: 12px 24px;
+  background: #e60012;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(230, 0, 18, 0.4);
+}
+
+.btn-primary:hover {
+  background: #000000;
+  transform: translateY(-2px);
+}
+
 @media (max-width: 768px) {
   .glass-container {
     padding: 24px;
@@ -727,6 +849,14 @@ tr:hover {
     flex-direction: column;
     gap: 12px;
     text-align: center;
+  }
+  
+  .top-actions {
+    position: relative;
+    top: auto;
+    right: auto;
+    margin-bottom: 16px;
+    text-align: right;
   }
 }
 </style>

@@ -1,23 +1,21 @@
 <template>
   <div class="login-wrapper">
-    <!-- Background layer for custom image -->
-    <div class="background-layer"></div>
+    <div class="login-bg"></div>
     
     <div class="login-container">
       <div class="login-box">
         <div class="login-header">
-          <h1>Administrator Login</h1>
-          <p class="subtitle">Expense Report Management System</p>
+          <h1>Review Your Requests</h1>
+          <p class="subtitle">Enter your GPN and password to view your expense reports</p>
         </div>
         
-        <!-- Login form -->
         <form @submit.prevent="handleLogin" class="login-form">
           <div class="form-group">
-            <label>Username</label>
+            <label>GPN</label>
             <input 
-              v-model="username" 
+              v-model="gpn" 
               type="text" 
-              placeholder="Enter admin username"
+              placeholder="12345678"
               :disabled="loading"
             />
           </div>
@@ -27,7 +25,7 @@
             <input 
               v-model="password" 
               type="password" 
-              placeholder="Enter password"
+              placeholder="Enter password from email"
               :disabled="loading"
             />
           </div>
@@ -35,20 +33,20 @@
           <button 
             type="submit" 
             class="btn-login"
-            :disabled="loading || !username || !password"
+            :disabled="loading || !gpn || !password"
           >
             <span v-if="loading" class="spinner"></span>
             <span v-else>Login</span>
           </button>
         </form>
         
-        <!-- Error message display -->
         <div v-if="error" class="error-message">
           {{ error }}
         </div>
         
         <div class="login-footer">
-          <p>Authorized personnel only</p>
+          <p>Password was sent to your email when you submitted your first report</p>
+          <router-link to="/" class="back-link">← Back to Submit Report</router-link>
         </div>
       </div>
     </div>
@@ -60,28 +58,23 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const API_BASE_URL = 'http://localhost:8000/admin'
+const API_BASE_URL = 'http://localhost:8000'
 
-// Reactive state variables
-const username = ref('')
+const gpn = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
 
-// Handle login form submission
 async function handleLogin() {
   loading.value = true
   error.value = ''
   
   try {
-    // Send login request to backend
-    const response = await fetch(`${API_BASE_URL}/login`, {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: username.value,
+        gpn: gpn.value,
         password: password.value
       })
     })
@@ -93,14 +86,15 @@ async function handleLogin() {
     
     const data = await response.json()
     
-    // Store JWT token in localStorage
-    localStorage.setItem('admin_token', data.access_token)
+    // Save token and GPN
+    localStorage.setItem('user_token', data.access_token)
+    localStorage.setItem('user_gpn', data.gpn)
     
-    // Redirect to admin dashboard
-    router.push('/admin/dashboard')
+    // Redirect to request management page
+    router.push('/requests')
     
   } catch (err) {
-    error.value = err.message || 'Invalid username or password'
+    error.value = err.message || 'Invalid GPN or password'
   } finally {
     loading.value = false
   }
@@ -108,7 +102,7 @@ async function handleLogin() {
 </script>
 
 <style scoped>
-/* Login page wrapper */
+/* Similar to AdminLogin.vue with same styling */
 .login-wrapper {
   min-height: 100vh;
   position: relative;
@@ -117,39 +111,29 @@ async function handleLogin() {
   justify-content: center;
 }
 
-/* Background layer - customizable with your own image */
-.background-layer {
+.login-bg {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  /* Local image path - put your image in public/images/ */
-  background-image: url('/images/bg.jpg');
-  background-size: cover;        /* Cover entire screen */
-  background-position: center;   /* Center the image */
-  background-repeat: no-repeat;  /* Do not repeat */
-  background-attachment: fixed;  /* Fixed background on scroll */
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
   z-index: -1;
 }
 
-/* Centered login container */
 .login-container {
   width: 100%;
   max-width: 400px;
   padding: 20px;
 }
 
-/* Glass morphism login box */
 .login-box {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 20px;
   padding: 40px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Header with red accent */
 .login-header {
   text-align: center;
   margin-bottom: 30px;
@@ -179,7 +163,6 @@ async function handleLogin() {
   margin-top: 10px;
 }
 
-/* Form styling */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -197,7 +180,6 @@ async function handleLogin() {
   font-weight: 600;
   color: #000;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .form-group input {
@@ -205,17 +187,13 @@ async function handleLogin() {
   border: 2px solid #000;
   border-radius: 10px;
   font-size: 1rem;
-  transition: all 0.3s ease;
-  background: #fff;
 }
 
 .form-group input:focus {
   outline: none;
   border-color: #e60012;
-  box-shadow: 0 0 0 3px rgba(230, 0, 18, 0.1);
 }
 
-/* Login button with red theme */
 .btn-login {
   background: #e60012;
   color: #fff;
@@ -225,23 +203,13 @@ async function handleLogin() {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-top: 10px;
 }
 
 .btn-login:hover:not(:disabled) {
   background: #000;
-  transform: translateY(-2px);
 }
 
-.btn-login:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Error message styling */
 .error-message {
   background: #fee;
   color: #e60012;
@@ -249,11 +217,9 @@ async function handleLogin() {
   border-radius: 8px;
   margin-top: 15px;
   text-align: center;
-  font-weight: 600;
   border-left: 4px solid #e60012;
 }
 
-/* Footer text */
 .login-footer {
   text-align: center;
   margin-top: 25px;
@@ -264,10 +230,19 @@ async function handleLogin() {
 .login-footer p {
   color: #999;
   font-size: 0.8rem;
-  margin: 0;
+  margin: 0 0 10px 0;
 }
 
-/* Loading spinner */
+.back-link {
+  color: #e60012;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
 .spinner {
   width: 20px;
   height: 20px;
