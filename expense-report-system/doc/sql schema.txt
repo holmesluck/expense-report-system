@@ -20,3 +20,43 @@ CREATE INDEX idx_expense_report_gpn ON expense_report(gpn);
 CREATE INDEX idx_expense_report_report_date ON expense_report(report_date);
 CREATE INDEX idx_expense_report_item ON expense_report(item);
 CREATE INDEX idx_expense_report_created_at ON expense_report(created_at);
+
+-- 20260222
+-- Add user_email column to expense_report
+ALTER TABLE expense_report ADD COLUMN user_email VARCHAR(255);
+
+-- Add status column for request lifecycle
+ALTER TABLE expense_report ADD COLUMN status VARCHAR(20) DEFAULT 'pending';
+
+-- Create users table for authentication
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    gpn VARCHAR(8) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--20260221
+-- Main personnel table
+CREATE TABLE personnel (
+    gpn VARCHAR(8) PRIMARY KEY CHECK (gpn ~ '^\d{7,8}$'),
+    id SERIAL UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Line managers table (one-to-many relationship)
+CREATE TABLE line_managers (
+    id SERIAL PRIMARY KEY,
+    employee_gpn VARCHAR(8) NOT NULL REFERENCES personnel(gpn) ON DELETE CASCADE,
+    level INT NOT NULL CHECK (level IN (1, 2, 3)), -- LM level 1, 2, or 3
+    lm_gpn VARCHAR(8) NOT NULL CHECK (lm_gpn ~ '^\d{7,8}$'),
+    lm_name VARCHAR(100),
+    lm_rank VARCHAR(50),
+    lm_email VARCHAR(255) CHECK (lm_email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    UNIQUE(employee_gpn, level)
+);
