@@ -1,6 +1,6 @@
 <template>
   <div class="login-wrapper">
-    <div class="login-bg"></div>
+    <div class="background-layer"></div>
     
     <div class="login-container">
       <div class="login-box">
@@ -111,13 +111,17 @@ async function handleLogin() {
   justify-content: center;
 }
 
-.login-bg {
+.background-layer {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+  background-image: url('/images/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   z-index: -1;
 }
 
